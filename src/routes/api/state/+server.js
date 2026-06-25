@@ -7,7 +7,7 @@ export async function GET() {
     return json(state);
   } catch (error) {
     console.error('GET state error:', error);
-    return json({ error: 'Failed to fetch state' }, { status: 500 });
+    return json({ error: 'Failed to fetch state', details: error.message }, { status: 500 });
   }
 }
 

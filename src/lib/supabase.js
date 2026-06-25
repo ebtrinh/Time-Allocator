@@ -1,12 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+function getSupabase() {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
+}
 
 export const DB_ID = 'default';
 
 export async function getState() {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('time_allocator')
     .select('data')
     .eq('id', DB_ID)
@@ -22,7 +24,7 @@ export async function getState() {
 }
 
 export async function saveState(state) {
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('time_allocator')
     .upsert({ id: DB_ID, data: state, updated_at: new Date().toISOString() });
 
