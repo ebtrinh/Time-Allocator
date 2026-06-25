@@ -64,20 +64,24 @@
     const totalRatio = state.activities.reduce((s, a) => s + a.ratio, 0);
     if (totalRatio === 0) return 0;
 
-    // Calculate each activity's "remaining need" based on full day target
+    // Budget = time left + time already spent (the time we're working with)
+    const totalSpent = state.activities.reduce((s, a) => s + getSpentForActivity(a.name), 0);
+    const budget = minsLeft + totalSpent;
+
+    // Calculate each activity's "remaining need" based on fair share of budget
     const remainingNeeds = state.activities.map(a => {
-      const fullDayTarget = (a.ratio / totalRatio) * 1440;
+      const target = (a.ratio / totalRatio) * budget;
       const spent = getSpentForActivity(a.name);
-      return Math.max(0, fullDayTarget - spent);
+      return Math.max(0, target - spent);
     });
 
     const totalRemainingNeed = remainingNeeds.reduce((s, n) => s + n, 0);
     if (totalRemainingNeed === 0) return 0;
 
     // This activity's remaining need
-    const fullDayTarget = (activity.ratio / totalRatio) * 1440;
+    const target = (activity.ratio / totalRatio) * budget;
     const spent = getSpentForActivity(activity.name);
-    const remainingNeed = Math.max(0, fullDayTarget - spent);
+    const remainingNeed = Math.max(0, target - spent);
 
     // Distribute minsLeft proportionally based on remaining needs
     return (remainingNeed / totalRemainingNeed) * minsLeft;
