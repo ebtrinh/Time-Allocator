@@ -63,9 +63,24 @@
   function calcRemaining(activity) {
     const totalRatio = state.activities.reduce((s, a) => s + a.ratio, 0);
     if (totalRatio === 0) return 0;
-    const normRatio = activity.ratio / totalRatio;
+
+    // Calculate each activity's "remaining need" based on full day target
+    const remainingNeeds = state.activities.map(a => {
+      const fullDayTarget = (a.ratio / totalRatio) * 1440;
+      const spent = getSpentForActivity(a.name);
+      return Math.max(0, fullDayTarget - spent);
+    });
+
+    const totalRemainingNeed = remainingNeeds.reduce((s, n) => s + n, 0);
+    if (totalRemainingNeed === 0) return 0;
+
+    // This activity's remaining need
+    const fullDayTarget = (activity.ratio / totalRatio) * 1440;
     const spent = getSpentForActivity(activity.name);
-    return Math.max(0, (normRatio * minsLeft) - spent);
+    const remainingNeed = Math.max(0, fullDayTarget - spent);
+
+    // Distribute minsLeft proportionally based on remaining needs
+    return (remainingNeed / totalRemainingNeed) * minsLeft;
   }
 
   function getActivityColor(name) {
