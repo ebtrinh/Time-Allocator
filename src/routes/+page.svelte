@@ -73,6 +73,19 @@
     return activity ? activity.color : '#64748b';
   }
 
+  function capLogInput(name) {
+    const mins = parseFloat(logInputs[name] || 0);
+    if (isNaN(mins) || mins <= 0) return;
+
+    const nowMins = getMinutesSinceMidnight();
+    const totalLogged = getTotalLogged();
+    const availableToLog = nowMins - totalLogged;
+
+    if (mins > availableToLog && availableToLog > 0) {
+      logInputs[name] = Math.floor(availableToLog);
+    }
+  }
+
   function showError(msg) {
     errorMessage = msg;
     setTimeout(() => errorMessage = '', 3000);
@@ -163,18 +176,18 @@
     const totalLogged = getTotalLogged();
     const availableToLog = nowMins - totalLogged;
 
-    if (mins > availableToLog) {
-      showError(`Can only log ${Math.floor(availableToLog)} more minutes (${formatTime(availableToLog)} unlogged time)`);
-      return;
-    }
-
     if (mins > nowMins) {
       showError(`Cannot log more than ${formatTime(nowMins)} (time since midnight)`);
       return;
     }
 
-    const endTime = nowMins - totalLogged;
-    state.log = [...state.log, { activity: name, duration: mins, endTime }];
+    const cappedMins = Math.min(mins, availableToLog);
+    if (cappedMins !== mins) {
+      logInputs[name] = cappedMins;
+    }
+
+    const endTime = nowMins;
+    state.log = [...state.log, { activity: name, duration: cappedMins, endTime }];
     logInputs[name] = '';
     await saveState();
   }
@@ -402,6 +415,7 @@
                 step="1"
                 min="1"
                 bind:value={logInputs[activity.name]}
+                on:input={() => capLogInput(activity.name)}
               >
               <button class="log-btn" on:click={() => logTime(activity.name)}>Log</button>
               <button class="del-btn" on:click={() => removeActivity(activity.name)}>&times;</button>
