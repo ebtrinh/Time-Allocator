@@ -415,15 +415,30 @@
       {#if !state.yesterday || state.yesterday.activities.length === 0}
         <div class="no-data">No data from yesterday</div>
       {:else}
-        {#each state.yesterday.activities as activity}
-          {@const diff = activity.spent - activity.expected}
-          {@const cls = diff > 5 ? 'over' : diff < -5 ? 'under' : 'neutral'}
-          {@const label = diff > 5 ? `+${formatTime(diff)}` : diff < -5 ? `-${formatTime(Math.abs(diff))}` : 'on target'}
-          <div class="summary-item">
-            <span>{activity.name}</span>
-            <span class={cls}>{formatTime(activity.spent)} ({label})</span>
+        {@const totalSpent = state.yesterday.activities.reduce((s, a) => s + a.spent, 0)}
+        {@const underActivities = state.yesterday.activities.filter(a => a.spent - a.expected < -15).sort((a, b) => (a.spent - a.expected) - (b.spent - b.expected))}
+        <div class="summary-total">
+          Total logged: <strong>{formatTime(totalSpent)}</strong>
+        </div>
+        <div class="summary-list">
+          {#each state.yesterday.activities as activity}
+            {@const diff = activity.spent - activity.expected}
+            {@const cls = diff > 5 ? 'over' : diff < -5 ? 'under' : 'neutral'}
+            {@const label = diff > 5 ? `+${formatTime(diff)}` : diff < -5 ? `-${formatTime(Math.abs(diff))}` : 'on target'}
+            <div class="summary-item">
+              <span>{activity.name}</span>
+              <span class={cls}>{formatTime(activity.spent)} ({label})</span>
+            </div>
+          {/each}
+        </div>
+        {#if underActivities.length > 0}
+          <div class="summary-watch">
+            <div class="watch-header">Watch today:</div>
+            {#each underActivities as activity}
+              <div class="watch-item">{activity.name} (was {formatTime(Math.abs(activity.spent - activity.expected))} under)</div>
+            {/each}
           </div>
-        {/each}
+        {/if}
       {/if}
     </div>
   </div>

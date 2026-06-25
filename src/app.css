@@ -318,6 +318,22 @@ h1 {
   padding: 0 0.25rem;
 }
 
+.summary-total {
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #475569;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.summary-total strong {
+  color: #38bdf8;
+}
+
+.summary-list {
+  margin-bottom: 0.75rem;
+}
+
 .summary-item {
   display: flex;
   justify-content: space-between;
@@ -328,6 +344,26 @@ h1 {
 
 .summary-item:last-child {
   border: none;
+}
+
+.summary-watch {
+  background: #1a2332;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.watch-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f97316;
+  margin-bottom: 0.5rem;
+}
+
+.watch-item {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  padding: 0.25rem 0;
 }
 
 .over {
