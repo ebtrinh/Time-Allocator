@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Time Allocator</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 1.5rem; }
+    .container { max-width: 1000px; margin: 0 auto; }
+
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.5rem; color: #38bdf8; }
+    .clock { font-size: 1.1rem; color: #94a3b8; }
+    .clock span { color: #22c55e; font-weight: 600; }
+    .sync-status { font-size: 0.75rem; margin-left: 0.5rem; }
+    .sync-status.synced { color: #22c55e; }
+    .sync-status.syncing { color: #eab308; }
+    .sync-status.error { color: #ef4444; }
+
+    .bar-container { background: #1e293b; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1.5rem; }
+    .bar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .bar-label { font-size: 0.85rem; color: #64748b; }
+    .portions-input { display: flex; align-items: center; gap: 0.5rem; }
+    .portions-input label { font-size: 0.85rem; color: #64748b; }
+    .portions-input input { width: 60px; background: #334155; border: 1px solid #475569; border-radius: 0.25rem; padding: 0.3rem 0.5rem; color: #e2e8f0; text-align: center; }
+    .bar-wrapper { position: relative; padding-top: 16px; }
+    .ratio-bar { display: flex; height: 50px; background: #334155; border-radius: 0.5rem; overflow: visible; position: relative; }
+    .ratio-bar.empty { justify-content: center; align-items: center; color: #64748b; font-style: italic; overflow: hidden; }
+    .portion-line { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.2); z-index: 2; pointer-events: none; }
+
+    .segment { height: 100%; display: flex; align-items: center; justify-content: center; position: relative; min-width: 20px; z-index: 1; }
+    .segment span { font-weight: 600; font-size: 0.85rem; text-shadow: 0 1px 2px rgba(0,0,0,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 0.5rem; }
+
+    .divider { width: 4px; background: #fff; cursor: ew-resize; position: relative; z-index: 10; flex-shrink: 0; }
+    .divider::before { content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); width: 10px; height: 10px; background: #fff; border-radius: 50%; }
+    .divider:hover, .divider.dragging { background: #38bdf8; }
+    .divider:hover::before, .divider.dragging::before { background: #38bdf8; }
+
+    .add-form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .add-form input { flex: 1; max-width: 300px; background: #1e293b; border: 1px solid #475569; border-radius: 0.5rem; padding: 0.75rem 1rem; color: #e2e8f0; font-size: 1rem; }
+    .add-form input:focus { outline: none; border-color: #38bdf8; }
+    .add-form button { background: #22c55e; border: none; border-radius: 0.5rem; padding: 0.75rem 1.5rem; color: white; cursor: pointer; font-weight: 600; }
+
+    .grid { display: grid; grid-template-columns: 1fr 280px; gap: 1.5rem; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+
+    .panel { background: #1e293b; border-radius: 0.75rem; padding: 1rem; }
+    .panel h2 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 1rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }
+
+    .activity-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .activity-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem; background: #334155; border-radius: 0.5rem; }
+    .color-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .activity-info { flex: 1; min-width: 0; }
+    .activity-name { font-weight: 600; font-size: 0.95rem; }
+    .activity-meta { font-size: 0.75rem; color: #94a3b8; }
+    .activity-hours { text-align: right; }
+    .activity-hours .remaining { font-size: 1.1rem; font-weight: 600; color: #38bdf8; }
+    .activity-hours .spent { font-size: 0.75rem; color: #64748b; }
+    .log-input { width: 60px; background: #1e293b; border: 1px solid #475569; border-radius: 0.25rem; padding: 0.3rem; color: #e2e8f0; text-align: center; }
+    .log-btn { background: #3b82f6; border: none; border-radius: 0.25rem; padding: 0.3rem 0.6rem; color: white; cursor: pointer; font-size: 0.8rem; }
+    .del-btn { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 1.2rem; padding: 0 0.25rem; }
+
+    .summary-item { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #334155; font-size: 0.85rem; }
+    .summary-item:last-child { border: none; }
+    .over { color: #ef4444; }
+    .under { color: #22c55e; }
+    .neutral { color: #94a3b8; }
+    .no-data { color: #64748b; font-style: italic; text-align: center; padding: 1rem; }
+
+    .timeline-container { background: #1e293b; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1.5rem; }
+    .timeline-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .timeline-label { font-size: 0.85rem; color: #64748b; }
+    .timeline-bar { position: relative; height: 40px; background: #334155; border-radius: 0.5rem; overflow: hidden; }
+    .timeline-block { position: absolute; top: 0; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .timeline-block span { font-size: 0.7rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.5); white-space: nowrap; padding: 0 0.25rem; }
+    .timeline-now { position: absolute; top: 0; bottom: 0; width: 2px; background: #22c55e; z-index: 5; }
+    .timeline-hours { display: flex; justify-content: space-between; margin-top: 0.25rem; font-size: 0.7rem; color: #64748b; }
+
+    .error-toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; z-index: 100; animation: fadeInOut 3s forwards; }
+    @keyframes fadeInOut { 0% { opacity: 0; transform: translateX(-50%) translateY(20px); } 10% { opacity: 1; transform: translateX(-50%) translateY(0); } 90% { opacity: 1; } 100% { opacity: 0; } }
+
+    .loading { display: flex; justify-content: center; align-items: center; height: 200px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Daily Time Allocator <span id="sync-status" class="sync-status"></span></h1>
+      <div class="clock">Time left: <span id="mins-left">24h 0m</span></div>
+    </header>
+
+    <div class="bar-container">
+      <div class="bar-header">
+        <div class="bar-label">Drag dividers to adjust ratios</div>
+        <div class="portions-input">
+          <label>Portions:</label>
+          <input type="number" id="portions" value="6" min="1" max="24" onchange="updatePortions()">
+        </div>
+      </div>
+      <div class="bar-wrapper">
+        <div id="ratio-bar" class="ratio-bar empty">Add activities below</div>
+      </div>
+    </div>
+
+    <div class="timeline-container">
+      <div class="timeline-header">
+        <div class="timeline-label">Today's Timeline</div>
+      </div>
+      <div id="timeline-bar" class="timeline-bar"></div>
+      <div class="timeline-hours">
+        <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>12am</span>
+      </div>
+    </div>
+
+    <div id="error-container"></div>
+
+    <div class="add-form">
+      <input type="text" id="new-name" placeholder="Activity name" onkeypress="if(event.key==='Enter')addActivity()">
+      <button onclick="addActivity()">Add Activity</button>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Today's Activities</h2>
+        <div id="activities" class="activity-list"><div class="loading">Loading...</div></div>
+      </div>
+      <div class="panel">
+        <h2>Yesterday's Summary</h2>
+        <div id="summary"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============ SUPABASE CONFIG ============
+    // Replace these with your Supabase project credentials
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    // =========================================
+
+    const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#8b5cf6','#ec4899','#f43f5e','#06b6d4'];
+    const STORAGE_KEY = 'timeAllocator';
+    const DB_ID = 'default';
+
+    let supabase = null;
+    let cachedState = null;
+    let dragIndex = -1, dragStartX = 0, dragStartRatios = [];
+    let saveTimeout = null;
+
+    function initSupabase() {
+      if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+        console.warn('Supabase not configured, using localStorage only');
+        return false;
+      }
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      return true;
+    }
+
+    function setSyncStatus(status) {
+      const el = document.getElementById('sync-status');
+      el.className = 'sync-status ' + status;
+      el.textContent = status === 'synced' ? '(synced)' : status === 'syncing' ? '(syncing...)' : '(offline)';
+    }
+
+    async function getState() {
+      if (cachedState) return cachedState;
+
+      // Try localStorage first for fast load
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) {
+        cachedState = JSON.parse(local);
+        migrateState(cachedState);
+      }
+
+      // Then sync from database
+      if (supabase) {
+        try {
+          setSyncStatus('syncing');
+          const { data, error } = await supabase
+            .from('time_allocator')
+            .select('data')
+            .eq('id', DB_ID)
+            .single();
+
+          if (data && !error) {
+            cachedState = data.data;
+            migrateState(cachedState);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedState));
+            setSyncStatus('synced');
+          } else if (error && error.code === 'PGRST116') {
+            // No row exists, create one
+            await saveStateToDb(cachedState || getDefaultState());
+            setSyncStatus('synced');
+          }
+        } catch (e) {
+          console.error('DB fetch error:', e);
+          setSyncStatus('error');
+        }
+      }
+
+      if (!cachedState) {
+        cachedState = getDefaultState();
+      }
+
+      return cachedState;
+    }
+
+    function getDefaultState() {
+      return { activities: [], log: [], lastDate: null, yesterday: null, portions: 6 };
+    }
+
+    function migrateState(state) {
+      if (!state.portions) state.portions = 6;
+      if (state.log && !Array.isArray(state.log)) state.log = [];
+      if (!state.log) state.log = [];
+    }
+
+    async function saveState(state) {
+      cachedState = state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+      // Debounce database saves
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => saveStateToDb(state), 500);
+    }
+
+    async function saveStateToDb(state) {
+      if (!supabase) return;
+
+      try {
+        setSyncStatus('syncing');
+        const { error } = await supabase
+          .from('time_allocator')
+          .upsert({ id: DB_ID, data: state, updated_at: new Date().toISOString() });
+
+        if (error) throw error;
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error('DB save error:', e);
+        setSyncStatus('error');
+      }
+    }
+
+    function getSpentForActivity(log, name) {
+      return log.filter(e => e.activity === name).reduce((s, e) => s + e.duration, 0);
+    }
+
+    function getTotalLogged(log) {
+      return log.reduce((s, e) => s + e.duration, 0);
+    }
+
+    function getMinutesSinceMidnight() {
+      const now = new Date();
+      return now.getHours() * 60 + now.getMinutes();
+    }
+
+    function showError(msg) {
+      const container = document.getElementById('error-container');
+      container.innerHTML = `<div class="error-toast">${msg}</div>`;
+      setTimeout(() => container.innerHTML = '', 3000);
+    }
+
+    function getToday() {
+      return new Date().toISOString().split('T')[0];
+    }
+
+    function getMinutesLeft() {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      return (midnight - now) / 60000;
+    }
+
+    function checkDayReset(state) {
+      const today = getToday();
+      if (state.lastDate && state.lastDate !== today) {
+        const totalRatio = state.activities.reduce((s, a) => s + a.ratio, 0);
+        state.yesterday = {
+          date: state.lastDate,
+          activities: state.activities.map(a => ({
+            name: a.name,
+            ratio: a.ratio,
+            expected: totalRatio > 0 ? (a.ratio / totalRatio) * 1440 : 0,
+            spent: getSpentForActivity(state.log, a.name)
+          })),
+          timeline: state.log
+        };
+        state.log = [];
+      }
+      state.lastDate = today;
+      return state;
+    }
+
+    function calcRemaining(activity, activities, minsLeft, log) {
+      const totalRatio = activities.reduce((s, a) => s + a.ratio, 0);
+      if (totalRatio === 0) return 0;
+      const normRatio = activity.ratio / totalRatio;
+      const spent = getSpentForActivity(log, activity.name);
+      return Math.max(0, (normRatio * minsLeft) - spent);
+    }
+
+    function renderBar(state) {
+      const bar = document.getElementById('ratio-bar');
+      const totalPortions = state.activities.reduce((s, a) => s + a.ratio, 0) || state.portions;
+      document.getElementById('portions').value = totalPortions;
+
+      let linesHtml = '';
+      for (let i = 1; i < totalPortions; i++) {
+        const pct = (i / totalPortions) * 100;
+        linesHtml += `<div class="portion-line" style="left:${pct}%"></div>`;
+      }
+
+      if (state.activities.length === 0) {
+        bar.className = 'ratio-bar empty';
+        bar.innerHTML = 'Add activities below';
+        return;
+      }
+      bar.className = 'ratio-bar';
+      let html = linesHtml;
+      state.activities.forEach((a, i) => {
+        html += `<div class="segment" style="flex:${a.ratio};background:${a.color}"><span>${a.name}</span></div>`;
+        if (i < state.activities.length - 1) {
+          html += `<div class="divider" data-index="${i}"></div>`;
+        }
+      });
+      bar.innerHTML = html;
+
+      bar.querySelectorAll('.divider').forEach(div => {
+        div.addEventListener('mousedown', startDrag);
+        div.addEventListener('touchstart', startDrag, { passive: false });
+      });
+    }
+
+    function startDrag(e) {
+      e.preventDefault();
+      dragIndex = parseInt(e.target.dataset.index);
+      dragStartX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+      dragStartRatios = cachedState.activities.map(a => a.ratio);
+      e.target.classList.add('dragging');
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', endDrag);
+      document.addEventListener('touchmove', onDrag, { passive: false });
+      document.addEventListener('touchend', endDrag);
+    }
+
+    async function onDrag(e) {
+      if (dragIndex < 0) return;
+      e.preventDefault();
+      const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+      const bar = document.getElementById('ratio-bar');
+      const barRect = bar.getBoundingClientRect();
+      const dx = clientX - dragStartX;
+      const totalRatio = dragStartRatios.reduce((s, r) => s + r, 0);
+      const pxPerRatio = barRect.width / totalRatio;
+      const rawDelta = dx / pxPerRatio;
+      const deltaPortions = Math.round(rawDelta);
+
+      if (deltaPortions === 0) return;
+
+      const state = cachedState;
+      state.activities.forEach((a, i) => a.ratio = dragStartRatios[i]);
+
+      if (deltaPortions > 0) {
+        for (let d = 0; d < deltaPortions; d++) {
+          let shrinkIdx = -1;
+          for (let j = dragIndex + 1; j < state.activities.length; j++) {
+            if (state.activities[j].ratio > 1) { shrinkIdx = j; break; }
+          }
+          if (shrinkIdx === -1) break;
+          state.activities[dragIndex].ratio++;
+          state.activities[shrinkIdx].ratio--;
+        }
+      } else {
+        for (let d = 0; d < Math.abs(deltaPortions); d++) {
+          let shrinkIdx = -1;
+          for (let j = dragIndex; j >= 0; j--) {
+            if (state.activities[j].ratio > 1) { shrinkIdx = j; break; }
+          }
+          if (shrinkIdx === -1) break;
+          state.activities[dragIndex + 1].ratio++;
+          state.activities[shrinkIdx].ratio--;
+        }
+      }
+
+      await saveState(state);
+      renderUI(state);
+    }
+
+    function endDrag() {
+      dragIndex = -1;
+      document.querySelectorAll('.divider').forEach(d => d.classList.remove('dragging'));
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', endDrag);
+      document.removeEventListener('touchmove', onDrag);
+      document.removeEventListener('touchend', endDrag);
+    }
+
+    function formatTime(mins) {
+      const h = Math.floor(mins / 60);
+      const m = Math.round(mins % 60);
+      if (h === 0) return `${m}m`;
+      if (m === 0) return `${h}h`;
+      return `${h}h ${m}m`;
+    }
+
+    function formatClockTime(mins) {
+      const h = Math.floor(mins / 60) % 12 || 12;
+      const m = Math.floor(mins % 60);
+      const ampm = mins < 720 ? 'am' : 'pm';
+      return `${h}:${m.toString().padStart(2, '0')}${ampm}`;
+    }
+
+    function getActivityColor(state, name) {
+      const activity = state.activities.find(a => a.name === name);
+      return activity ? activity.color : '#64748b';
+    }
+
+    function renderTimeline(state) {
+      const bar = document.getElementById('timeline-bar');
+      const nowMins = getMinutesSinceMidnight();
+      const nowPct = (nowMins / 1440) * 100;
+
+      let html = '';
+      state.log.forEach(entry => {
+        const startMins = entry.endTime - entry.duration;
+        const startPct = (startMins / 1440) * 100;
+        const widthPct = (entry.duration / 1440) * 100;
+        const color = getActivityColor(state, entry.activity);
+        html += `<div class="timeline-block" style="left:${startPct}%;width:${widthPct}%;background:${color}" title="${entry.activity}: ${formatTime(entry.duration)} (${formatClockTime(startMins)} - ${formatClockTime(entry.endTime)})"><span>${entry.activity}</span></div>`;
+      });
+
+      html += `<div class="timeline-now" style="left:${nowPct}%"></div>`;
+      bar.innerHTML = html;
+    }
+
+    function renderActivities(state) {
+      const minsLeft = getMinutesLeft();
+      const container = document.getElementById('activities');
+      if (state.activities.length === 0) {
+        container.innerHTML = '<div class="no-data">No activities yet</div>';
+        return;
+      }
+      const totalPortions = state.activities.reduce((s, x) => s + x.ratio, 0);
+      container.innerHTML = state.activities.map(a => {
+        const spent = getSpentForActivity(state.log, a.name);
+        const remaining = calcRemaining(a, state.activities, minsLeft, state.log);
+        return `
+          <div class="activity-row">
+            <div class="color-dot" style="background:${a.color}"></div>
+            <div class="activity-info">
+              <div class="activity-name">${a.name}</div>
+              <div class="activity-meta">${a.ratio} of ${totalPortions} portions</div>
+            </div>
+            <div class="activity-hours">
+              <div class="remaining">${formatTime(remaining)}</div>
+              <div class="spent">${formatTime(spent)} spent</div>
+            </div>
+            <input type="number" class="log-input" id="log-${a.name}" placeholder="min" step="1" min="1">
+            <button class="log-btn" onclick="logTime('${a.name}')">Log</button>
+            <button class="del-btn" onclick="removeActivity('${a.name}')">&times;</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSummary(state) {
+      const el = document.getElementById('summary');
+      if (!state.yesterday || state.yesterday.activities.length === 0) {
+        el.innerHTML = '<div class="no-data">No data from yesterday</div>';
+        return;
+      }
+      el.innerHTML = state.yesterday.activities.map(a => {
+        const diff = a.spent - a.expected;
+        const cls = diff > 5 ? 'over' : diff < -5 ? 'under' : 'neutral';
+        const label = diff > 5 ? `+${formatTime(diff)}` : diff < -5 ? `-${formatTime(Math.abs(diff))}` : 'on target';
+        return `<div class="summary-item"><span>${a.name}</span><span class="${cls}">${formatTime(a.spent)} (${label})</span></div>`;
+      }).join('');
+    }
+
+    function redistributePortions(state, newTotal) {
+      if (state.activities.length === 0) return;
+      const oldTotal = state.activities.reduce((s, a) => s + a.ratio, 0);
+      if (oldTotal === newTotal) return;
+      const minRequired = state.activities.length;
+      if (newTotal < minRequired) return;
+
+      let remaining = newTotal;
+      state.activities.forEach((a, i) => {
+        if (i === state.activities.length - 1) {
+          a.ratio = remaining;
+        } else {
+          const proportion = a.ratio / oldTotal;
+          a.ratio = Math.max(1, Math.round(proportion * newTotal));
+          remaining -= a.ratio;
+        }
+      });
+      if (state.activities[state.activities.length - 1].ratio < 1) {
+        state.activities[state.activities.length - 1].ratio = 1;
+      }
+    }
+
+    async function updatePortions() {
+      const newPortions = parseInt(document.getElementById('portions').value) || 6;
+      const state = await getState();
+      if (state.activities.length === 0) {
+        state.portions = newPortions;
+        await saveState(state);
+        renderUI(state);
+        return;
+      }
+      if (newPortions >= state.activities.length) {
+        redistributePortions(state, newPortions);
+        await saveState(state);
+        renderUI(state);
+      }
+    }
+
+    function renderUI(state) {
+      document.getElementById('mins-left').textContent = formatTime(getMinutesLeft());
+      renderBar(state);
+      renderTimeline(state);
+      renderActivities(state);
+      renderSummary(state);
+    }
+
+    async function render() {
+      let state = await getState();
+      state = checkDayReset(state);
+      await saveState(state);
+      renderUI(state);
+    }
+
+    async function addActivity() {
+      const input = document.getElementById('new-name');
+      const name = input.value.trim();
+      if (!name) return;
+      const state = await getState();
+      if (state.activities.find(a => a.name === name)) return;
+      const color = COLORS[state.activities.length % COLORS.length];
+      state.activities.push({ name, ratio: 1, color });
+      await saveState(state);
+      input.value = '';
+      renderUI(state);
+    }
+
+    async function removeActivity(name) {
+      const state = await getState();
+      state.activities = state.activities.filter(a => a.name !== name);
+      state.log = state.log.filter(e => e.activity !== name);
+      await saveState(state);
+      renderUI(state);
+    }
+
+    async function logTime(name) {
+      const input = document.getElementById(`log-${name}`);
+      const mins = parseFloat(input.value);
+
+      if (isNaN(mins) || mins <= 0) {
+        showError('Please enter a valid number of minutes');
+        return;
+      }
+
+      const state = await getState();
+      const nowMins = getMinutesSinceMidnight();
+      const totalLogged = getTotalLogged(state.log);
+      const availableToLog = nowMins - totalLogged;
+
+      if (mins > availableToLog) {
+        showError(`Can only log ${Math.floor(availableToLog)} more minutes (${formatTime(availableToLog)} unlogged time)`);
+        return;
+      }
+
+      if (mins > nowMins) {
+        showError(`Cannot log more than ${formatTime(nowMins)} (time since midnight)`);
+        return;
+      }
+
+      const endTime = totalLogged + mins;
+      state.log.push({ activity: name, duration: mins, endTime: endTime });
+
+      await saveState(state);
+      input.value = '';
+      renderUI(state);
+    }
+
+    // Initialize
+    initSupabase();
+    render();
+    setInterval(render, 60000);
+  </script>
+</body>
+</html>
