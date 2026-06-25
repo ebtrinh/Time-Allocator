@@ -173,7 +173,7 @@
       return;
     }
 
-    const endTime = totalLogged + mins;
+    const endTime = nowMins - totalLogged;
     state.log = [...state.log, { activity: name, duration: mins, endTime }];
     logInputs[name] = '';
     await saveState();
@@ -337,6 +337,9 @@
       <div class="timeline-label">Today's Timeline</div>
     </div>
     <div class="timeline-bar">
+      {#each Array(48) as _, i}
+        <div class="timeline-mark {i % 2 === 0 ? 'hour' : 'half'}" style="left: {(i * 30 / 1440) * 100}%"></div>
+      {/each}
       {#each state.log as entry}
         {@const startMins = entry.endTime - entry.duration}
         {@const startPct = (startMins / 1440) * 100}
