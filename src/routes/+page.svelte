@@ -78,8 +78,8 @@
     if (isNaN(mins) || mins <= 0) return;
 
     const nowMins = getMinutesSinceMidnight();
-    const totalLogged = getTotalLogged();
-    const availableToLog = nowMins - totalLogged;
+    const lastLog = state.log[state.log.length - 1];
+    const availableToLog = lastLog ? (nowMins - lastLog.endTime) : nowMins;
 
     if (mins > availableToLog && availableToLog > 0) {
       logInputs[name] = Math.floor(availableToLog);
@@ -173,8 +173,8 @@
     }
 
     const nowMins = getMinutesSinceMidnight();
-    const totalLogged = getTotalLogged();
-    const availableToLog = nowMins - totalLogged;
+    const lastLog = state.log[state.log.length - 1];
+    const availableToLog = lastLog ? (nowMins - lastLog.endTime) : nowMins;
 
     if (mins > nowMins) {
       showError(`Cannot log more than ${formatTime(nowMins)} (time since midnight)`);
