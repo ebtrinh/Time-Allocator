@@ -34,7 +34,8 @@
   }
 
   function getToday() {
-    return new Date().toISOString().split('T')[0];
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
 
   function formatTime(mins) {
@@ -112,6 +113,20 @@
 
   function checkDayReset() {
     const today = getToday();
+    let recovered = false;
+
+    // Recover data if yesterday's log was wrongly moved (due to UTC bug)
+    if (state.yesterday && state.yesterday.timeline && state.yesterday.timeline.length > 0 && state.log.length === 0) {
+      // Check if yesterday's date matches today (data was wrongly moved)
+      // or if lastDate is today but log is empty (just recovered)
+      const yesterdayDate = state.yesterday.date;
+      if (yesterdayDate === today || state.lastDate === today) {
+        state.log = state.yesterday.timeline;
+        state.yesterday = null;
+        recovered = true;
+      }
+    }
+
     if (state.lastDate && state.lastDate !== today) {
       const totalRatio = state.activities.reduce((s, a) => s + a.ratio, 0);
       state.yesterday = {
@@ -127,6 +142,7 @@
       state.log = [];
     }
     state.lastDate = today;
+    return recovered;
   }
 
   async function fetchState() {
@@ -138,7 +154,8 @@
         if (!state.log) state.log = [];
         if (!Array.isArray(state.log)) state.log = [];
         if (!state.portions) state.portions = 6;
-        checkDayReset();
+        const recovered = checkDayReset();
+        if (recovered) await saveState();
         syncStatus = 'synced';
       } else {
         syncStatus = 'error';
@@ -449,13 +466,16 @@
         <div class="no-data">No data from yesterday</div>
       {:else}
         {@const totalSpent = state.yesterday.activities.reduce((s, a) => s + a.spent, 0)}
-        {@const underActivities = state.yesterday.activities.filter(a => a.spent - a.expected < -15).sort((a, b) => (a.spent - a.expected) - (b.spent - b.expected))}
+        {@const totalRatio = state.yesterday.activities.reduce((s, a) => s + a.ratio, 0)}
+        {@const getExpectedFromSpent = (a) => totalSpent > 0 ? (a.ratio / totalRatio) * totalSpent : 0}
+        {@const underActivities = state.yesterday.activities.filter(a => a.spent - getExpectedFromSpent(a) < -5).sort((a, b) => (a.spent - getExpectedFromSpent(a)) - (b.spent - getExpectedFromSpent(b)))}
         <div class="summary-total">
           Total logged: <strong>{formatTime(totalSpent)}</strong>
         </div>
         <div class="summary-list">
           {#each state.yesterday.activities as activity}
-            {@const diff = activity.spent - activity.expected}
+            {@const expectedFromSpent = getExpectedFromSpent(activity)}
+            {@const diff = activity.spent - expectedFromSpent}
             {@const cls = diff > 5 ? 'over' : diff < -5 ? 'under' : 'neutral'}
             {@const label = diff > 5 ? `+${formatTime(diff)}` : diff < -5 ? `-${formatTime(Math.abs(diff))}` : 'on target'}
             <div class="summary-item">
@@ -468,7 +488,8 @@
           <div class="summary-watch">
             <div class="watch-header">Watch today:</div>
             {#each underActivities as activity}
-              <div class="watch-item">{activity.name} (was {formatTime(Math.abs(activity.spent - activity.expected))} under)</div>
+              {@const expectedFromSpent = getExpectedFromSpent(activity)}
+              <div class="watch-item">{activity.name} (was {formatTime(Math.abs(activity.spent - expectedFromSpent))} under)</div>
             {/each}
           </div>
         {/if}
