@@ -4,7 +4,7 @@
 
   const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#8b5cf6','#ec4899','#f43f5e','#06b6d4'];
 
-  let state = { activities: [], log: [], lastDate: null, yesterday: null, portions: 6 };
+  let state = { activities: [], log: [], lastDate: null, yesterday: null, portions: 6, resetTime: 1440 };
   let syncStatus = '';
   let errorMessage = '';
   let newActivityName = '';
@@ -21,16 +21,38 @@
 
   function getMinutesLeft() {
     if (!browser) return 1440;
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    return (midnight - now) / 60000;
+    const nowMins = getMinutesSinceMidnight();
+    const reset = state.resetTime || 1440;
+    // Handle reset time: if reset is 1440 (midnight), treat as 0 for next day
+    const effectiveReset = reset === 1440 ? 1440 : reset;
+    if (nowMins < effectiveReset) {
+      return effectiveReset - nowMins;
+    } else {
+      // Past reset time, count until tomorrow's reset
+      return (1440 - nowMins) + (reset === 1440 ? 0 : reset);
+    }
   }
 
   function getMinutesSinceMidnight() {
     if (!browser) return 0;
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
+  }
+
+  function getLogicalDate() {
+    // The "logical day" ends at resetTime
+    // If we're past resetTime, we're in "tomorrow's" logical day
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const reset = state.resetTime || 1440;
+
+    if (reset < 1440 && nowMins >= reset) {
+      // Past reset time, logical date is tomorrow
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    }
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   }
 
   function getToday() {
@@ -112,7 +134,7 @@
   }
 
   function checkDayReset() {
-    const today = getToday();
+    const today = getLogicalDate();
     let recovered = false;
 
     // Recover data if yesterday's log was wrongly moved (due to UTC bug)
@@ -154,6 +176,7 @@
         if (!state.log) state.log = [];
         if (!Array.isArray(state.log)) state.log = [];
         if (!state.portions) state.portions = 6;
+        if (!state.resetTime) state.resetTime = 1440;
         const recovered = checkDayReset();
         if (recovered) await saveState();
         syncStatus = 'synced';
@@ -261,6 +284,22 @@
     await saveState();
   }
 
+  function getResetTimeString() {
+    const mins = state.resetTime || 1440;
+    if (mins === 1440) return '00:00';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  async function updateResetTime(e) {
+    const [h, m] = e.target.value.split(':').map(Number);
+    const mins = h * 60 + m;
+    state.resetTime = mins === 0 ? 1440 : mins; // 00:00 means midnight = 1440
+    minsLeft = getMinutesLeft();
+    await saveState();
+  }
+
   function startDrag(e, index) {
     e.preventDefault();
     dragIndex = index;
@@ -344,7 +383,13 @@
         {#if syncStatus === 'synced'}(synced){:else if syncStatus === 'syncing'}(syncing...){:else if syncStatus === 'error'}(offline){/if}
       </span>
     </h1>
-    <div class="clock">Time left: <span>{formatTime(minsLeft)}</span></div>
+    <div class="clock">
+      Time left: <span>{formatTime(minsLeft)}</span>
+      <span class="reset-time-setting">
+        <label>Day ends:</label>
+        <input type="time" value={getResetTimeString()} on:change={updateResetTime}>
+      </span>
+    </div>
   </header>
 
   <div class="bar-container">
